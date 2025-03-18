@@ -5,7 +5,6 @@ import json
 import time
 import threading
 import queue
-import serial
 import logging
 
 # Configure logging
@@ -24,9 +23,6 @@ app = Flask(__name__)
 # Configuration
 DATA_DIRECTORY = "smart_room_data"
 MAX_MESSAGES = 100  # Maximum number of messages to keep in memory
-SERIAL_PORT = "/dev/ttyACM0"  # Change according to your Arduino connection
-SERIAL_BAUD = 9600
-ARDUINO_TIMEOUT = 5  # Seconds to wait for Arduino response
 
 # System state
 system_state = {
@@ -37,7 +33,6 @@ system_state = {
     "last_update": None,  # Timestamp of last update
     "detected_user": None,  # ID of detected user (if any)
     "users_in_room": [],  # List of users currently in room
-    "arduino_connected": False  # Connection status
 }
 
 # User database (in real implementation, this would be in a proper database)
@@ -51,10 +46,6 @@ users = {
 message_queue = queue.Queue(maxsize=MAX_MESSAGES)
 latest_messages = []  # Store recent messages for new connections
 
-# Serial connection to Arduino
-arduino_serial = None
-arduino_lock = threading.Lock()  # Lock for thread-safe serial access
-
 # Ensure data directory exists
 if not os.path.exists(DATA_DIRECTORY):
     os.makedirs(DATA_DIRECTORY)
@@ -64,65 +55,12 @@ for dir_path in ['templates', 'static']:
     if not os.path.exists(dir_path):
         os.makedirs(dir_path)
 
-def initialize_arduino():
-    """Initialize serial connection to Arduino"""
-    global arduino_serial, system_state
-    try:
-        arduino_serial = serial.Serial(SERIAL_PORT, SERIAL_BAUD, timeout=1)
-        time.sleep(2)  # Allow time for Arduino to reset
-        system_state["arduino_connected"] = True
-        logger.info("Arduino connection established")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to connect to Arduino: {e}")
-        system_state["arduino_connected"] = False
-        return False
-
-def send_to_arduino(command_dict):
-    """Send command to Arduino as JSON"""
-    global arduino_serial, arduino_lock
-    
-    if not system_state["arduino_connected"]:
-        logger.error("Cannot send command: Arduino not connected")
-        return False
-    
-    try:
-        with arduino_lock:
-            command_json = json.dumps(command_dict)
-            arduino_serial.write((command_json + "\n").encode())
-            logger.info(f"Sent to Arduino: {command_json}")
-        return True
-    except Exception as e:
-        logger.error(f"Error sending to Arduino: {e}")
-        system_state["arduino_connected"] = False
-        return False
-
-def read_from_arduino():
-    """Read and process data from Arduino"""
-    global arduino_serial, arduino_lock, system_state
-    
-    if not system_state["arduino_connected"]:
-        return None
-    
-    try:
-        with arduino_lock:
-            if arduino_serial.in_waiting > 0:
-                line = arduino_serial.readline().decode('utf-8').strip()
-                if line:
-                    logger.debug(f"Received from Arduino: {line}")
-                    return line
-    except Exception as e:
-        logger.error(f"Error reading from Arduino: {e}")
-        system_state["arduino_connected"] = False
-    
-    return None
-
 def process_arduino_data(data_str):
     """Process data received from Arduino"""
     global system_state
     
     try:
-        data = json.loads(data_str)
+        data = json.loads(data_str) if isinstance(data_str, str) else data_str
         
         # Generate timestamp
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -131,14 +69,24 @@ def process_arduino_data(data_str):
         data['pi_timestamp'] = timestamp
         
         # Log to console
-        logger.info(f"Data received from Arduino: {data}")
+        logger.info(f"Data received from relay server: {data}")
         
         # Update system state
         if "door" in data:
-            system_state["door_state"] = data["door"]
+            door_value = data["door"]
+            # Handle different formats of door state
+            if isinstance(door_value, bool):
+                system_state["door_state"] = door_value
+            elif isinstance(door_value, str):
+                system_state["door_state"] = (door_value.lower() == "open")
         
         if "light" in data:
-            system_state["light_state"] = data["light"]
+            light_value = data["light"]
+            # Handle different formats of light state
+            if isinstance(light_value, bool):
+                system_state["light_state"] = light_value
+            elif isinstance(light_value, str):
+                system_state["light_state"] = (light_value.lower() == "on")
         
         if "user_present" in data:
             old_user_present = system_state["user_present"]
@@ -182,9 +130,9 @@ def process_arduino_data(data_str):
         return data
         
     except json.JSONDecodeError:
-        logger.warning(f"Received non-JSON data from Arduino: {data_str}")
+        logger.warning(f"Received non-JSON data: {data_str}")
     except Exception as e:
-        logger.error(f"Error processing Arduino data: {e}")
+        logger.error(f"Error processing data: {e}")
     
     return None
 
@@ -261,10 +209,38 @@ def dashboard():
     """Serve the dashboard page"""
     return render_template('dashboard.html')
 
-@app.route('/api/state', methods=['GET'])
-def get_state():
-    """Return current system state"""
-    return jsonify(system_state)
+@app.route('/api/state', methods=['GET', 'POST'])
+def api_state():
+    """Handle system state - both retrieval and updates"""
+    # For GET requests, return current system state
+    if request.method == 'GET':
+        return jsonify(system_state)
+    
+    # For POST requests, process incoming data
+    elif request.method == 'POST':
+        try:
+            # Get data from request
+            data = request.get_json()
+            if data:
+                # Process the data
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                logger.info(f"Data received via API: {data}")
+                
+                # Process the data
+                process_arduino_data(data)
+                
+                # Return success response
+                return jsonify({
+                    "status": "success",
+                    "message": "Data received and processed",
+                    "timestamp": timestamp,
+                    "updated_state": system_state
+                })
+            else:
+                return jsonify({"status": "error", "message": "No data provided"}), 400
+        except Exception as e:
+            logger.error(f"Error processing API data: {e}")
+            return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/users', methods=['GET'])
 def get_users():
@@ -288,28 +264,27 @@ def control_light():
                 "message": "Cannot turn off light while users are in the room"
             }), 403
         
-        # Send command to Arduino
-        arduino_command = {
-            "action": f"light_{command}"
+        # Update light state directly
+        system_state["light_state"] = (command == 'on')
+        
+        # Send light state update
+        light_event = {
+            'type': 'light_control',
+            'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'command': command,
+            'success': True
         }
         
-        if send_to_arduino(arduino_command):
-            # Set immediate feedback (will be updated by Arduino's response)
-            if command == 'on':
-                system_state["light_state"] = True
-            elif command == 'off' and not system_state["user_present"]:
-                system_state["light_state"] = False
-            
-            return jsonify({
-                "status": "success", 
-                "message": f"Light turned {command}",
-                "state": system_state
-            })
-        else:
-            return jsonify({
-                "status": "error", 
-                "message": "Failed to communicate with Arduino controller"
-            }), 500
+        try:
+            message_queue.put_nowait(json.dumps(light_event))
+        except queue.Full:
+            pass
+        
+        return jsonify({
+            "status": "success", 
+            "message": f"Light turned {command}",
+            "state": system_state
+        })
             
     except Exception as e:
         logger.error(f"Error in light control: {e}")
@@ -383,84 +358,14 @@ def events():
                 
     return Response(generate(), mimetype="text/event-stream")
 
-@app.route('/api/test', methods=['GET', 'POST'])
-def test_endpoint():
-    """Simple test endpoint for relay server connection"""
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # Log the test request
-    logger.info(f"Test request received at {timestamp}")
-    
-    # Process any data if this is a POST request
-    data = None
-    if request.method == 'POST':
-        try:
-            data = request.get_json()
-            logger.info(f"Test data received: {data}")
-        except:
-            data = "No valid JSON data"
-    
-    # Build response
-    response = {
-        "status": "success",
-        "message": "Raspberry Pi connection test successful",
-        "timestamp": timestamp,
-        "system_state": system_state,
-        "received_data": data
-    }
-    
-    return jsonify(response)
-
-def arduino_communication_thread():
-    """Background thread for Arduino communication"""
-    logger.info("Starting Arduino communication thread")
-    
-    while True:
-        try:
-            # Check connection status
-            if not system_state["arduino_connected"]:
-                if not initialize_arduino():
-                    # Failed to connect, wait before retry
-                    time.sleep(5)
-                    continue
-            
-            # Read from Arduino
-            data = read_from_arduino()
-            if data:
-                process_arduino_data(data)
-            
-            # Request status update every 30 seconds
-            request_counter = 0
-            while system_state["arduino_connected"] and request_counter < 30:
-                time.sleep(1)
-                request_counter += 1
-                
-                # Continue reading in between status requests
-                data = read_from_arduino()
-                if data:
-                    process_arduino_data(data)
-            
-            # Send status request if still connected
-            if system_state["arduino_connected"]:
-                send_to_arduino({"action": "status"})
-                
-        except Exception as e:
-            logger.error(f"Error in Arduino communication thread: {e}")
-            # If we got an exception, assume connection is lost
-            system_state["arduino_connected"] = False
-            time.sleep(5)  # Wait before retry
-
 if __name__ == '__main__':
-    # Start Arduino communication in background thread
-    arduino_thread = threading.Thread(target=arduino_communication_thread, daemon=True)
-    arduino_thread.start()
-    
     # Run the server
     logger.info("Starting Smart Room Server")
     print("\n" + "*"*60)
     print("*  SMART ROOM CONTROL SYSTEM")
     print("*  " + "-"*45)
     print(f"*  Web Dashboard:     http://0.0.0.0:8000/")
+    print(f"*  API Endpoint:      http://0.0.0.0:8000/api/state")
     print(f"*  Mobile API:        http://0.0.0.0:8000/api/mobile")
     print(f"*  Data directory:    {os.path.abspath(DATA_DIRECTORY)}")
     print("*"*60 + "\n")
