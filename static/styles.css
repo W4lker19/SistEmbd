@@ -1,0 +1,318 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f5f5f5;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.header {
+    background-color: #2c3e50;
+    color: white;
+    padding: 15px;
+    border-radius: 5px 5px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+/* Room Status Panel */
+.room-status {
+    background-color: #fff;
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.status-box {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.status-icon {
+    font-size: 32px;
+    margin-bottom: 10px;
+}
+
+.status-value {
+    font-size: 20px;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.status-label {
+    font-size: 14px;
+    color: #7f8c8d;
+    text-transform: uppercase;
+    margin-bottom: 15px;
+}
+
+.status-controls {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.control-btn {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background-color 0.3s;
+}
+
+.control-btn:hover {
+    background-color: #2980b9;
+}
+
+/* User Panel */
+.users-panel {
+    background-color: #fff;
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.users-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    padding: 10px;
+}
+
+.user-item {
+    background-color: #f8f9fa;
+    padding: 10px 15px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.user-icon {
+    font-size: 24px;
+}
+
+.user-name {
+    font-weight: bold;
+}
+
+.no-users {
+    color: #7f8c8d;
+    font-style: italic;
+    padding: 10px;
+}
+
+/* Stats Panel */
+.stats {
+    background-color: #fff;
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+}
+
+.stat-box {
+    background-color: #f8f9fa;
+    padding: 10px;
+    border-radius: 5px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.stat-value {
+    font-size: 18px;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: #7f8c8d;
+    text-transform: uppercase;
+}
+
+/* Activity Log */
+.activity-log {
+    background-color: #fff;
+    padding: 15px;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.log-controls {
+    display: flex;
+    gap: 10px;
+}
+
+.console {
+    background-color: #2c3e50;
+    color: #ecf0f1;
+    padding: 15px;
+    border-radius: 5px;
+    height: 300px;
+    overflow-y: auto;
+    font-family: monospace;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.log-entry {
+    margin-bottom: 8px;
+    padding: 5px;
+    border-bottom: 1px solid #34495e;
+}
+
+.timestamp {
+    color: #e74c3c;
+    margin-right: 10px;
+}
+
+.log-type {
+    padding: 2px 5px;
+    border-radius: 3px;
+    margin-right: 10px;
+    font-size: 12px;
+}
+
+.log-type-info {
+    background-color: #3498db;
+}
+
+.log-type-error {
+    background-color: #e74c3c;
+}
+
+.log-type-welcome {
+    background-color: #2ecc71;
+}
+
+.log-type-update {
+    background-color: #f39c12;
+}
+
+.log-type-control {
+    background-color: #9b59b6;
+}
+
+.log-message {
+    margin-right: 10px;
+}
+
+.log-user {
+    background-color: #2ecc71;
+    padding: 2px 5px;
+    border-radius: 3px;
+    margin-left: 5px;
+}
+
+.log-details {
+    padding: 5px;
+    margin-top: 5px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    font-size: 12px;
+    white-space: pre-wrap;
+}
+
+/* Status Indicators */
+.status-on {
+    color: #2ecc71;
+}
+
+.status-off {
+    color: #7f8c8d;
+}
+
+.status-active {
+    color: #3498db;
+}
+
+.status-inactive {
+    color: #7f8c8d;
+}
+
+.error-state {
+    color: #e74c3c;
+}
+
+/* Connection Status */
+.connection-status {
+    padding: 5px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.connected {
+    background-color: #2ecc71;
+}
+
+.disconnected {
+    background-color: #e74c3c;
+}
+
+/* Auto-scroll Button */
+.auto-scroll {
+    background-color: #2ecc71;
+}
+
+.auto-scroll.disabled {
+    background-color: #95a5a6;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .status-grid, .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .console {
+        height: 200px;
+    }
+}
+
+@media (max-width: 480px) {
+    .status-grid, .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .header {
+        flex-direction: column;
+    }
+    
+    .connection-status {
+        margin-top: 10px;
+    }
+}
