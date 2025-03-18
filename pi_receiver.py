@@ -383,6 +383,34 @@ def events():
                 
     return Response(generate(), mimetype="text/event-stream")
 
+@app.route('/api/test', methods=['GET', 'POST'])
+def test_endpoint():
+    """Simple test endpoint for relay server connection"""
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Log the test request
+    logger.info(f"Test request received at {timestamp}")
+    
+    # Process any data if this is a POST request
+    data = None
+    if request.method == 'POST':
+        try:
+            data = request.get_json()
+            logger.info(f"Test data received: {data}")
+        except:
+            data = "No valid JSON data"
+    
+    # Build response
+    response = {
+        "status": "success",
+        "message": "Raspberry Pi connection test successful",
+        "timestamp": timestamp,
+        "system_state": system_state,
+        "received_data": data
+    }
+    
+    return jsonify(response)
+
 def arduino_communication_thread():
     """Background thread for Arduino communication"""
     logger.info("Starting Arduino communication thread")
