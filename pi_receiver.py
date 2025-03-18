@@ -23,6 +23,7 @@ app = Flask(__name__)
 # Configuration
 DATA_DIRECTORY = "smart_room_data"
 MAX_MESSAGES = 100  # Maximum number of messages to keep in memory
+ARDUINO_TIMEOUT = 60
 
 # System state
 system_state = {
@@ -33,6 +34,7 @@ system_state = {
     "last_update": None,  # Timestamp of last update
     "detected_user": None,  # ID of detected user (if any)
     "users_in_room": [],  # List of users currently in room
+    "arduino_connected": False
 }
 
 # User database (in real implementation, this would be in a proper database)
@@ -104,6 +106,7 @@ def process_arduino_data(data_str):
             system_state["luminosity"] = data["luminosity"]
         
         system_state["last_update"] = timestamp
+        system_state["arduino_connected"] = True
         
         # Save to daily log
         save_to_daily_file(data)
@@ -214,6 +217,16 @@ def api_state():
     """Handle system state - both retrieval and updates"""
     # For GET requests, return current system state
     if request.method == 'GET':
+        # Check if Arduino is still connected (timeout if no data for 60 seconds)
+        if system_state["last_update"]:
+            last_update = datetime.datetime.strptime(system_state["last_update"], "%Y-%m-%d %H:%M:%S")
+            now = datetime.datetime.now()
+            time_diff = (now - last_update).total_seconds()
+
+            # Mark as disconnected if no data received in ARDUINO_TIMEOUT seconds
+            if time_diff > ARDUINO_TIMEOUT:
+                system_state["arduino_connected"] = False
+                
         return jsonify(system_state)
     
     # For POST requests, process incoming data
