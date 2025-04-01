@@ -357,6 +357,7 @@ function toggleOverride() {
     })
     .then(response => response.json())
     .then(data => {
+        console.log('Override response:', data);
         if (data.status === 'success') {
             addLogEntry({
                 type: 'control',
