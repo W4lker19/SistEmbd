@@ -249,7 +249,7 @@ def forward_command_to_arduino(command):
 @app.route('/')
 def dashboard():
     """Serve the dashboard page"""
-    return render_template('dashboard.html')
+    return render_template('templates\dashboard.html')
 
 @app.route('/api/state', methods=['GET', 'POST'])
 def api_state():
