@@ -14,7 +14,8 @@ let systemState = {
     last_update: null,
     detected_user: null,
     users_in_room: [],
-    arduino_connected: false
+    arduino_connected: false,
+    manual_override: false  // Added manual override state
 };
 
 // Store user information
@@ -32,6 +33,7 @@ function updateSystemState(newState) {
     updateLuminosityStatus();
     updateUsersInRoom();
     updateArduinoStatus();
+    updateOverrideStatus(); // Added to update override status
     
     // Update last update time
     if (newState.last_update) {
@@ -101,6 +103,25 @@ function updateLuminosityStatus() {
         luminosityIcon.textContent = '🌤️';
     } else {
         luminosityIcon.textContent = '🌑';
+    }
+}
+
+// Update manual override status indicator
+function updateOverrideStatus() {
+    const overrideStatus = document.getElementById('override-status');
+    const overrideIcon = document.getElementById('override-icon');
+    const overrideButton = document.getElementById('toggle-override');
+    
+    if (systemState.manual_override) {
+        overrideStatus.textContent = 'ON';
+        overrideStatus.className = 'status-value status-on';
+        overrideIcon.textContent = '🔓';
+        overrideButton.textContent = 'Disable Override';
+    } else {
+        overrideStatus.textContent = 'OFF';
+        overrideStatus.className = 'status-value status-off';
+        overrideIcon.textContent = '🔒';
+        overrideButton.textContent = 'Enable Override';
     }
 }
 
@@ -240,6 +261,18 @@ function connectToEventSource() {
                     message: `Welcome ${data.user_name}!`,
                     user: data.user_name
                 });
+            } else if (data.type === 'override') {
+                // Handle override toggle message
+                addLogEntry({
+                    type: 'control',
+                    timestamp: data.timestamp,
+                    message: `Manual override ${data.enabled ? 'enabled' : 'disabled'}`,
+                    details: { enabled: data.enabled }
+                });
+                
+                // Update system state
+                systemState.manual_override = data.enabled;
+                updateOverrideStatus();
             }
         } catch (e) {
             console.error('Error parsing event data:', e);
@@ -279,7 +312,10 @@ function controlLight(command) {
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ command: command })
+        body: JSON.stringify({ 
+            command: command,
+            override: systemState.manual_override  // Send current override state
+        })
     })
     .then(response => response.json())
     .then(data => {
@@ -304,6 +340,44 @@ function controlLight(command) {
         addLogEntry({
             type: 'error',
             message: `Error controlling light: ${error.message}`
+        });
+    });
+}
+
+// Toggle manual override function
+function toggleOverride() {
+    const newState = !systemState.manual_override;
+    
+    fetch('/api/override', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ enable: newState })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            addLogEntry({
+                type: 'control',
+                message: `Manual override ${newState ? 'enabled' : 'disabled'}`
+            });
+            
+            if (data.state) {
+                updateSystemState(data.state);
+            }
+        } else {
+            addLogEntry({
+                type: 'error',
+                message: `Failed to toggle override: ${data.message}`
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Error toggling override:', error);
+        addLogEntry({
+            type: 'error',
+            message: `Error toggling override: ${error.message}`
         });
     });
 }
@@ -376,6 +450,9 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('light-off').addEventListener('click', () => {
         controlLight('off');
     });
+    
+    // Override toggle button
+    document.getElementById('toggle-override').addEventListener('click', toggleOverride);
     
     // Initialize connection to server
     connectToEventSource();
