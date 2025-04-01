@@ -6,6 +6,7 @@ import time
 import threading
 import queue
 import logging
+import requests
 
 # Configure logging
 logging.basicConfig(
@@ -24,6 +25,7 @@ app = Flask(__name__)
 DATA_DIRECTORY = "smart_room_data"
 MAX_MESSAGES = 100  # Maximum number of messages to keep in memory
 ARDUINO_TIMEOUT = 60
+RELAY_SERVER = "http://localhost:5000/data"  # Address of your relay server
 
 # System state
 system_state = {
@@ -34,7 +36,8 @@ system_state = {
     "last_update": None,  # Timestamp of last update
     "detected_user": None,  # ID of detected user (if any)
     "users_in_room": [],  # List of users currently in room
-    "arduino_connected": False
+    "arduino_connected": False,
+    "manual_override": False  # Whether automatic control is overridden
 }
 
 # User database (in real implementation, this would be in a proper database)
@@ -104,6 +107,9 @@ def process_arduino_data(data_str):
         
         if "luminosity" in data:
             system_state["luminosity"] = data["luminosity"]
+            
+        if "manual_override" in data:
+            system_state["manual_override"] = data["manual_override"]
         
         system_state["last_update"] = timestamp
         system_state["arduino_connected"] = True
@@ -207,6 +213,39 @@ def save_to_daily_file(data):
     except Exception as e:
         logger.error(f"Error saving to daily file: {e}")
 
+def forward_command_to_arduino(command):
+    """Forwards a command to the Arduino via the relay server"""
+    try:
+        # Send command to relay server to forward to Arduino
+        response = requests.post(
+            RELAY_SERVER,
+            json=command,
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            logger.info(f"Command successfully forwarded to Arduino: {command}")
+            return {
+                'success': True,
+                'response': response.json() if response.text else None,
+                'error': None
+            }
+        else:
+            logger.error(f"Failed to forward command to Arduino. Status code: {response.status_code}")
+            return {
+                'success': False,
+                'response': None,
+                'error': f"HTTP Error: {response.status_code}"
+            }
+            
+    except Exception as e:
+        logger.error(f"Error forwarding command to Arduino: {e}")
+        return {
+            'success': False,
+            'response': None,
+            'error': str(e)
+        }
+
 @app.route('/')
 def dashboard():
     """Serve the dashboard page"""
@@ -266,26 +305,33 @@ def control_light():
     try:
         data = request.get_json()
         command = data.get('command')
+        override = data.get('override', False)  # Whether this is a manual override command
         
         if command not in ['on', 'off']:
             return jsonify({"status": "error", "message": "Invalid command"}), 400
         
-        # Check if we can turn off the light
-        if command == 'off' and system_state["user_present"]:
-            return jsonify({
-                "status": "error", 
-                "message": "Cannot turn off light while users are in the room"
-            }), 403
-        
-        # Update light state directly
+        # Update system state
         system_state["light_state"] = (command == 'on')
+        
+        # If override flag is sent, update the override status
+        if override:
+            system_state["manual_override"] = True
+        
+        # Forward command to Arduino
+        arduino_command = {
+            "action": f"light_{command}",
+            "manual_override": system_state["manual_override"]
+        }
+        
+        forward_result = forward_command_to_arduino(arduino_command)
         
         # Send light state update
         light_event = {
             'type': 'light_control',
             'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             'command': command,
-            'success': True
+            'override': system_state["manual_override"],
+            'success': forward_result['success']
         }
         
         try:
@@ -295,12 +341,59 @@ def control_light():
         
         return jsonify({
             "status": "success", 
-            "message": f"Light turned {command}",
-            "state": system_state
+            "message": f"Light turned {command}" + (" with override" if override else ""),
+            "state": system_state,
+            "forward_result": forward_result
         })
             
     except Exception as e:
         logger.error(f"Error in light control: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/override', methods=['POST'])
+def toggle_override():
+    """Toggle manual override mode"""
+    try:
+        data = request.get_json()
+        enable = data.get('enable')
+        
+        if enable is None:
+            # Toggle if not specified
+            enable = not system_state.get("manual_override", False)
+        
+        # Update system state
+        system_state["manual_override"] = enable
+        
+        # Forward command to Arduino
+        arduino_command = {
+            "action": "toggle_override",
+            "manual_override": enable
+        }
+        
+        forward_result = forward_command_to_arduino(arduino_command)
+        
+        # Send override state update
+        override_event = {
+            'type': 'override',
+            'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'enabled': enable,
+            'success': forward_result['success']
+        }
+        
+        try:
+            message_queue.put_nowait(json.dumps(override_event))
+        except queue.Full:
+            pass
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Manual override {'enabled' if enable else 'disabled'}",
+            "state": system_state,
+            "forward_result": forward_result
+        })
+            
+    except Exception as e:
+        logger.error(f"Error toggling override: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/mobile/register', methods=['POST'])
